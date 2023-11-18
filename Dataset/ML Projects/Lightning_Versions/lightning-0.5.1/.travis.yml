@@ -1,0 +1,70 @@
+# vim ft=yaml
+
+# After changing this file, check it on:
+#   http://yaml-online-parser.appspot.com/
+
+# See doc/travis_notes.txt for some guidelines
+
+# this file is *not* meant to cover or endorse the use of travis, but rather to
+# help confirm pull requests to this project.
+
+env:
+  global:
+    - DISPLAY=""
+
+language: python
+
+matrix:
+  include:
+    - os: linux
+      dist: xenial  # Ubuntu 16.04
+      python: 3.6
+      env: TOXENV=py36
+    - os: linux
+      dist: bionic  # Ubuntu 18.04
+      python: 3.6
+      env: TOXENV=py36
+    - os: linux
+      dist: bionic  # Ubuntu 18.04
+      python: 3.7
+      env: TOXENV=py37
+    - os: osx
+      osx_image: xcode9.4
+      language: generic
+      env: TOXENV=py36
+      addons:
+        homebrew:
+          # update: true
+          packages: python3
+      before_install:
+        - pip3 install virtualenv
+        - virtualenv -p python3 ~/venv
+        - source ~/venv/bin/activate
+#    - os: windows
+#      language: minimal
+#      before_install:
+#        - choco install python3
+#        - export PATH="/c/Python37:/c/Python37/Scripts:$PATH"
+#      env: TOXENV=py37
+
+# See http://docs.travis-ci.com/user/caching/#pip-cache
+cache: pip
+
+install:
+  - pip install -r requirements.txt
+  - pip install -r ./tests/requirements.txt
+  - pip --version ; pip list
+
+script:
+  # integration
+  - tox --sitepackages
+  - python setup.py install --dry-run
+
+after_success:
+  - coverage report
+  # disable auto coverage bc it isn't accurate since it misses gpu code.
+  # to get coverage, run local and push results
+  # - codecov
+
+notifications:
+  email: false
