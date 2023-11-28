@@ -36,7 +36,7 @@ def count_ml_files(directory, keywords, output_csv, project_folder):
     print("Total Python Files: ", total_py_file_count)
     return ml_file_count
 
-#project_directory = '/home/user/CS21D002_A_Eashaan_Rao/Research/CPDP/MSR 2024/Dataset/ray-master'
+
 
 
 
