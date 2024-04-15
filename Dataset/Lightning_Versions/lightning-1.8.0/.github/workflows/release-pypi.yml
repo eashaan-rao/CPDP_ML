@@ -1,0 +1,127 @@
+name: PyPI
+
+# https://help.github.com/en/actions/reference/events-that-trigger-workflows
+on:
+  push:
+    branches: [master, "release/*"]
+  release:
+    types: [published]
+
+# there are several consecutive actions:
+# 1) determine which packages have been change at the time this event is processed
+# 2) build related packages - app/pytorch or download latest from pypi
+# 3) create the meta package - lightning
+# 4) publish all new creations tada
+
+jobs:
+  # run job which determine changed versions
+  init:
+    runs-on: ubuntu-20.04
+    steps:
+    - uses: actions/checkout@v3
+    - run: |
+        mkdir dist && touch dist/.placeholder
+    - uses: actions/upload-artifact@v3
+      with:
+        name: dist-packages-${{ github.sha }}
+        path: dist
+
+  # based on https://github.com/pypa/gh-action-pypi-publish
+  build-packages:
+    needs: init
+    runs-on: ubuntu-20.04
+    strategy:
+      fail-fast: true
+      # run sequential
+      max-parallel: 1
+      matrix:
+        pkg-name: ["", "app", "lite", "pytorch"]
+    steps:
+    - uses: actions/checkout@v3
+    - uses: actions/download-artifact@v3
+      with:
+        name: dist-packages-${{ github.sha }}
+        path: dist
+    - uses: actions/setup-python@v4
+      with:
+        python-version: 3.9
+
+    - name: Install dependencies
+      run: pip install -U setuptools wheel
+
+    - name: Build packages
+      env:
+        PACKAGE_NAME: ${{ matrix.pkg-name }}
+      run: |
+        python setup.py sdist bdist_wheel
+        ls -lh dist/
+
+    - uses: actions/upload-artifact@v3
+      with:
+        name: dist-packages-${{ github.sha }}
+        path: dist
+
+  upload-packages:
+    runs-on: ubuntu-20.04
+    needs: build-packages
+    if: startsWith(github.event.ref, 'refs/tags') || github.event_name == 'release'
+    steps:
+    - uses: actions/checkout@v3
+    - uses: actions/download-artifact@v3
+      with:
+        name: dist-packages-${{ github.sha }}
+        path: dist
+    - run: ls -lh dist/
+    - name: Upload to release
+      uses: AButler/upload-release-assets@v2.0
+      with:
+        files: 'dist/*'
+        repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+  publish-packages:
+    runs-on: ubuntu-20.04
+    needs: build-packages
+    if: startsWith(github.event.ref, 'refs/tags') || github.event_name == 'release'
+    steps:
+    - uses: actions/checkout@v3
+    - uses: actions/download-artifact@v3
+      with:
+        name: dist-packages-${{ github.sha }}
+        path: dist
+    - run: ls -lh dist/
+    - run: mkdir pypi/
+
+    - name: Delay releasing
+      uses: juliangruber/sleep-action@v1
+      with:
+        time: 10m
+
+    - uses: ./.github/actions/pkg-publish
+      with:
+        pkg-pattern: "*app*"
+        pypi-token: ${{ secrets.PYPI_TOKEN_APP }}
+
+    - uses: ./.github/actions/pkg-publish
+      with:
+        pkg-pattern: "*lite*"
+        pypi-token: ${{ secrets.PYPI_TOKEN_LITE }}
+
+    - uses: ./.github/actions/pkg-publish
+      with:
+        pkg-pattern: "*pytorch*"
+        pypi-token: ${{ secrets.PYPI_TOKEN_PYTORCH }}
+
+    - uses: ./.github/actions/pkg-publish
+      with:
+        pkg-pattern: "*"
+        pypi-token: ${{ secrets.PYPI_TOKEN_LAI }}
+
+  legacy-checkpoints:
+    needs: publish-packages
+    uses: ./.github/workflows/legacy-checkpoints.yml
+    with:
+      push_to_s3: true
+      create_pr: true
+    secrets:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_KEY_ID: ${{ secrets.AWS_SECRET_KEY_ID }}
